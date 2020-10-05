@@ -1,6 +1,6 @@
 ﻿
 // This file contains Upwork connector logic
-[version = "3.1.1"]
+[version = "3.1.2"]
 section Upwork;
 
 windowWidth = 1024;
@@ -46,7 +46,7 @@ hoursSuffixUrl = "/hours";
 //Billing query
 billingQuery = "SELECT SUM(amount) WHERE assignment__reference=";
 billingQuery2 = "SELECT reference, date, date_due, assignment__reference, type, subtype, SUM(amount) WHERE date>='$sdate$' and date <='$edate$'";
-totalHoursQuery = "SELECT assignment_ref, SUM(hours) where worked_on >= '$sdate$' and worked_on <= '$edate$'";
+totalHoursQuery = "SELECT assignment_ref, worked_on, week_worked_on, SUM(hours) where worked_on >= '$sdate$' and worked_on <= '$edate$'";
 
 //Upwork public Urls
 freelanceProfileUrl = "https://www.upwork.com/freelancers/";
@@ -273,6 +273,8 @@ hoursWorkedOutputFinalColumns = {
 
     "company_uid",
     "worked_on_month",
+    "worked_on_date",
+    "worked_on_week_start_date",
     "contract_id",
     "hours_worked"
 };
@@ -367,10 +369,10 @@ queryMilestones = "query milestones($contractid: ID){  contract(id: $contractid)
 
 // shared Upwork.Contents = () as any =>
 //     let
-//         source = Upwork.GetCustomFields()
+//         source = Upwork.GetTotalHoursWorked()
 //     in
 //         source;
-// 
+
 shared Upwork.Contents = Value.ReplaceType(Upwork.NavImpl, Upwork.NavImplType);
 Upwork.NavImplType = type function() as table
         meta [
@@ -1520,9 +1522,9 @@ Upwork.GetContractsImpl = () =>
                 {"freelancer_id", Int64.Type}, 
                 {"offer_id", Int64.Type},
                 {"contract_id", Int64.Type},
-                {"accept_date", type datetime},
-                {"start_date", type datetime},
-                {"end_date", type datetime}})
+                {"accept_date", type date},
+                {"start_date", type date},
+                {"end_date", type date}})
     in
         transformedTable;
 
@@ -1706,7 +1708,7 @@ Upwork.GetJobsImpl = (optional status as text) =>
         removeBlankRows = Table.SelectRows(transformedDate, each [job_text_id] <> null),
 
         transformedTable = Table.TransformColumnTypes(removeBlankRows,
-                {{"job_created_date", type datetime},
+                {{"job_created_date", type date},
                 {"team_id", Int64.Type}})
 
     in
@@ -2067,11 +2069,22 @@ Upwork.GetTotalHoursWorkedImpl = () =>
         col1 = Table.AddColumn(expandedColumns, "assignment_ref", each if Value.Is([c], type list) then List.First([c]) 
                                                              else [c]),
        
+        col2 = Table.AddColumn(col1, "worked_on",
+                                            each if Value.Is([c], type list) then [c]{1} 
+                                            else [c]), 
+
+        col3 = Table.AddColumn(col2, "week_worked_on",
+                                            each if Value.Is([c], type list) then [c]{2} 
+                                            else [c]), 
+
         //last column is hours
-        colN = Table.AddColumn(col1, "hours", each if Value.Is([c], type list) then List.Last([c]) else [c]),
+        colN = Table.AddColumn(col3, "hours", each if Value.Is([c], type list) then List.Last([c]) else [c]),
 
         expandedReference = Table.ExpandRecordColumn(colN, "assignment_ref", {"v"}, {"contract_id"}),
-        expandedHours = Table.ExpandRecordColumn(expandedReference, "hours", {"v"}, {"hours_worked"}),
+        expandedWorkedOn = Table.ExpandRecordColumn(expandedReference, "worked_on", {"v"}, {"worked_on_date"}),
+        expandedWeekWorkedOn = Table.ExpandRecordColumn(expandedWorkedOn, "week_worked_on", {"v"}, {"worked_on_week_start_date"}),
+
+        expandedHours = Table.ExpandRecordColumn(expandedWeekWorkedOn, "hours", {"v"}, {"hours_worked"}),
         
         hoursTable = Table.SelectColumns(expandedHours, hoursWorkedOutputFinalColumns),
 
@@ -2081,6 +2094,8 @@ Upwork.GetTotalHoursWorkedImpl = () =>
                 {
                 {"contract_id", Int64.Type},
                 {"worked_on_month", type date}, 
+                {"worked_on_date", type date},
+                {"worked_on_week_start_date", type date},
                 {"hours_worked", type number}
                 })
     in
