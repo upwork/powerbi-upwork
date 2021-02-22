@@ -26,6 +26,9 @@ The connector pulls following data from Upwork API (Note: The data pulled from t
 
 Release notes
 =============
+**Feb 2021**
+1. Added Billing transaction notes column under Billing object
+
 **Oct 2020**
 1. Added additional columns in "Contract Hours" table
     Fetching contract hours worked data at date level granularity

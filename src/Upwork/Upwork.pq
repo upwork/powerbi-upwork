@@ -1,6 +1,6 @@
 ﻿
 // This file contains Upwork connector logic
-[version = "3.1.2"]
+[version = "3.1.3"]
 section Upwork;
 
 windowWidth = 1024;
@@ -45,7 +45,7 @@ hoursSuffixUrl = "/hours";
 
 //Billing query
 billingQuery = "SELECT SUM(amount) WHERE assignment__reference=";
-billingQuery2 = "SELECT reference, date, date_due, assignment__reference, type, subtype, SUM(amount) WHERE date>='$sdate$' and date <='$edate$'";
+billingQuery2 = "SELECT reference, date, date_due, assignment__reference, type, subtype, notes, description, SUM(amount) WHERE date>='$sdate$' and date <='$edate$'";
 totalHoursQuery = "SELECT assignment_ref, worked_on, week_worked_on, SUM(hours) where worked_on >= '$sdate$' and worked_on <= '$edate$'";
 
 //Upwork public Urls
@@ -264,6 +264,8 @@ billingOutputFinalColumns = {
     "contract_id",
     "type",
     "accounting_subtype",
+    "notes",
+    "description",
     "amount_spent"
 };
 
@@ -369,7 +371,7 @@ queryMilestones = "query milestones($contractid: ID){  contract(id: $contractid)
 
 // shared Upwork.Contents = () as any =>
 //     let
-//         source = Upwork.GetTotalHoursWorked()
+//         source = Upwork.GetBilling()
 //     in
 //         source;
 
@@ -1986,8 +1988,14 @@ Upwork.GetBillingImpl = () =>
         col6 = Table.AddColumn(col5, "subtype",
                                             each if Value.Is([c], type list) then [c]{5} 
                                             else [c]), 
+        col7 = Table.AddColumn(col6, "notes",
+                                            each if Value.Is([c], type list) then [c]{6} 
+                                            else [c]), 
+        col8 = Table.AddColumn(col7, "description",
+                                            each if Value.Is([c], type list) then [c]{7} 
+                                            else [c]), 
         //last column is amount_spent
-        colN = Table.AddColumn(col6, "amount", each if Value.Is([c], type list) then List.Last([c]) else [c]),
+        colN = Table.AddColumn(col8, "amount", each if Value.Is([c], type list) then List.Last([c]) else [c]),
 
         expandedReference = Table.ExpandRecordColumn(colN, "reference", {"v"}, {"txn_id"}),
         
@@ -1999,7 +2007,11 @@ Upwork.GetBillingImpl = () =>
         expandedType = Table.ExpandRecordColumn(expandedContract, "type", {"v"}, {"type"}),
         expandedSubType = Table.ExpandRecordColumn(expandedType, "subtype", {"v"}, {"accounting_subtype"}),
 
-        expandedAmount = Table.ExpandRecordColumn(expandedSubType, "amount", {"v"}, {"amount_spent"}),
+        expandedNotes = Table.ExpandRecordColumn(expandedSubType, "notes", {"v"}, {"notes"}),
+
+        expandedDescription = Table.ExpandRecordColumn(expandedNotes, "description", {"v"}, {"description"}),
+
+        expandedAmount = Table.ExpandRecordColumn(expandedDescription, "amount", {"v"}, {"amount_spent"}),
 
         billingTable = Table.SelectColumns(expandedAmount, billingOutputFinalColumns),
 
